@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Flip & Capture</title>
+    <style>
+        video, canvas, #flip, #capture {
+            width: 100%;
+            max-width: 400px;
+            display: none;
+            margin: 10px auto;
+        }
+        button {
+            display: block;
+            margin: 10px auto;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        #start {
+            display: block;
+        }
+        #capturedImage {
+            width: 100%;
+            max-width: 400px;
+            display: none;
+            margin: 10px auto;
+        }
+    </style>
+</head>
+<body>
+    <button id="start">Start Camera</button>
+    <video id="video" autoplay playsinline></video>
+    <button id="flip">Flip Camera</button>
+    <button id="capture">Capture Image</button>
+    <canvas id="canvas" style="display:none;"></canvas>
+    <img id="capturedImage" alt="Captured Image">
+    
+    <script>
+        let stream;
+        let currentFacingMode = "user";
+        const video = document.getElementById("video");
+        const canvas = document.getElementById("canvas");
+        const captureBtn = document.getElementById("capture");
+        const flipBtn = document.getElementById("flip");
+        const startBtn = document.getElementById("start");
+        const capturedImageElement = document.getElementById("capturedImage");
+        let capturedImage;
+
+        async function startCamera(facingMode) {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: facingMode }
+            });
+            video.srcObject = stream;
+            video.style.display = "block";
+            flipBtn.style.display = "block";
+            captureBtn.style.display = "block";
+            startBtn.style.display = "none";
+        }
+
+        flipBtn.addEventListener("click", () => {
+            currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+            startCamera(currentFacingMode);
+        });
+
+        captureBtn.addEventListener("click", () => {
+            const context = canvas.getContext("2d");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+            capturedImage = canvas.toDataURL("image/png");
+            capturedImageElement.src = capturedImage;
+            // console.log(capturedImageElement.src);
+            // console.log(capturedImage);
+            
+            capturedImageElement.style.display = "block";
+            
+            video.style.display = "none";
+            flipBtn.style.display = "none";
+            captureBtn.style.display = "none";
+        });
+
+        startBtn.addEventListener("click", () => {
+            startCamera(currentFacingMode);
+        });
+    </script>
+</body>
+</html>
