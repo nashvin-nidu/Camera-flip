@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Camera Flip & Capture</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         video, canvas, #flip, #capture {
             width: 100%;
@@ -27,6 +28,11 @@
             display: none;
             margin: 10px auto;
         }
+        #imageDetails {
+            text-align: center;
+            display: none;
+            margin-top: 10px;
+        }
     </style>
 </head>
 <body>
@@ -36,21 +42,40 @@
     <button id="capture">Capture Image</button>
     <canvas id="canvas" style="display:none;"></canvas>
     <img id="capturedImage" alt="Captured Image">
+    <div id="imageDetails">
+        <h2 id="imageTitle"></h2>
+        <p id="imageDescription"></p>
+        <button id="downloadPdf">Download as PDF</button>
+        <button id="sharePdf">Share as PDF</button>
+    </div>
     
     <script>
         let stream;
         let currentFacingMode = "user";
+        // Camera Element
         const video = document.getElementById("video");
         const canvas = document.getElementById("canvas");
+        // Buttons
         const captureBtn = document.getElementById("capture");
         const flipBtn = document.getElementById("flip");
         const startBtn = document.getElementById("start");
+        //Captured Image Element
         const capturedImageElement = document.getElementById("capturedImage");
+        //Text Element
+        const imageTitle = document.getElementById("imageTitle");
+        const imageDescription = document.getElementById("imageDescription");
+        const imageDetails = document.getElementById("imageDetails");
+        // Buttons
+        const downloadPdfBtn = document.getElementById("downloadPdf");
+        const shareBtn = document.getElementById("sharePdf");
+        const restartBtn = document.getElementById("restart")
+        //Captured Image Stored
         let capturedImage;
+        
 
         async function startCamera(facingMode) {
             if (stream) {
-                stream.getTracks().forEach(track => track.stop());
+                stopCamera();
             }
             
             stream = await navigator.mediaDevices.getUserMedia({
@@ -63,6 +88,13 @@
             startBtn.style.display = "none";
         }
 
+        //Here should be data retrived from Server.
+        const imageData = {
+            title: "Captured Image",
+            description: "This is the image captured from the camera."
+        };
+
+        // Buttons 
         flipBtn.addEventListener("click", () => {
             currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
             startCamera(currentFacingMode);
@@ -75,19 +107,125 @@
             context.drawImage(video, 0, 0, canvas.width, canvas.height);
             capturedImage = canvas.toDataURL("image/png");
             capturedImageElement.src = capturedImage;
-            // console.log(capturedImageElement.src);
-            // console.log(capturedImage);
-            
             capturedImageElement.style.display = "block";
+            
+            stopCamera(); // Stop the camera when capturing the image
             
             video.style.display = "none";
             flipBtn.style.display = "none";
             captureBtn.style.display = "none";
+            
+            imageTitle.innerText = imageData.title;
+            imageDescription.innerText = imageData.description;
+            imageDetails.style.display = "block";
         });
 
         startBtn.addEventListener("click", () => {
             startCamera(currentFacingMode);
         });
+
+        downloadPdfBtn.addEventListener("click", () => {
+            generatePdf(true);
+        });
+
+        shareBtn.addEventListener("click", () => {
+            generatePdf(false);
+        });
+
+        restartBtn.addEventListener("click", restartProcess);
+
+        
+        // Functions
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            video.srcObject = null;
+        }
+
+        function generatePdf(isDownload) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({
+                orientation: "portrait",
+                unit: "mm",
+                format: "a4"
+            });
+
+            // Load background image (border)
+            const backgroundImg = "./Green Modern Benefits Tree Planting Instagram Post.png"; // Replace with your border image
+
+            // Add background image covering the full page
+            doc.addImage(backgroundImg, "PNG", 0, 0, 210, 297); // (x, y, width, height)
+
+            // Title Styling
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(22);
+            doc.setTextColor(0, 51, 102); // Dark Blue
+            doc.text(imageData.title, 20, 40);
+
+            // Image Placement
+            const imgWidth = 140;
+            const imgHeight = 90;
+            const imgX = 35;
+            const imgY = 50;
+            doc.addImage(capturedImage, "PNG", imgX, imgY, imgWidth, imgHeight);
+
+            // Description Styling
+            doc.setFont("times", "normal");
+            doc.setFontSize(16);
+            doc.setTextColor(0, 0, 0);
+            doc.text("Description:", 20, imgY + imgHeight + 15);
+
+            doc.setFont("courier", "italic");
+            doc.setFontSize(14);
+            doc.text(imageData.description, 20, imgY + imgHeight + 25, { maxWidth: 170 });
+
+            // Footer
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(12);
+            doc.setTextColor(100, 100, 100);
+            doc.text("Generated by Camera App", 75, 285);
+
+            if (isDownload) {
+                // Save PDF locally
+                doc.save("Captured_Image.pdf");
+            } else {
+                // Convert to Blob for sharing
+                const pdfBlob = doc.output("blob");
+
+                const file = new File([pdfBlob], "Captured_Image.pdf", { type: "application/pdf" });
+                const fileUrl = URL.createObjectURL(file);
+
+                if (navigator.share) {
+                    navigator.share({
+                        title: imageData.title,
+                        text: imageData.description,
+                        files: [file]
+                    }).then(() => {
+                        console.log("PDF shared successfully!");
+                    }).catch((error) => {
+                        console.error("Error sharing PDF:", error);
+                    });
+                } else {
+                    alert("Sharing is not supported in your browser.");
+                }
+            }
+        }
+
+        function restartProcess() {
+            // Hide captured image and details
+            capturedImageElement.style.display = "none";
+            imageDetails.style.display = "none";
+
+            // Show camera, flip & capture buttons
+            video.style.display = "block";
+            flipBtn.style.display = "block";
+            captureBtn.style.display = "block";
+
+            // Restart camera
+            startCamera(currentFacingMode);
+        }
     </script>
 </body>
 </html>
+
