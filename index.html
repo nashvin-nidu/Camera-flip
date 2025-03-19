@@ -33,13 +33,31 @@
             display: none;
             margin-top: 10px;
         }
+        #loadingScreen {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-size: 20px;
+            text-align: center;
+            line-height: 100vh;
+        }
+
+        
     </style>
 </head>
 <body>
+
+    
     <button id="start">Start Camera</button>
     <video id="video" autoplay playsinline></video>
     <button id="flip">Flip Camera</button>
     <button id="capture">Capture Image</button>
+    <div id="loadingScreen">Processing...</div>
     <canvas id="canvas" style="display:none;"></canvas>
     <img id="capturedImage" alt="Captured Image">
     <div id="imageDetails">
@@ -47,11 +65,14 @@
         <p id="imageDescription"></p>
         <button id="downloadPdf">Download as PDF</button>
         <button id="sharePdf">Share as PDF</button>
+        <button id="restart">Restart</button>
     </div>
     
     <script>
         let stream;
         let currentFacingMode = "user";
+        // Div
+        const loadingScreen = document.getElementById("loadingScreen");
         // Camera Element
         const video = document.getElementById("video");
         const canvas = document.getElementById("canvas");
@@ -89,38 +110,92 @@
         }
 
         //Here should be data retrived from Server.
-        const imageData = {
-            title: "Captured Image",
-            description: "This is the image captured from the camera."
-        };
+        let imageData = {};
 
         // Buttons 
-        flipBtn.addEventListener("click", () => {
-            currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
+        startBtn.addEventListener("click", () => {
             startCamera(currentFacingMode);
         });
 
-        captureBtn.addEventListener("click", () => {
-            const context = canvas.getContext("2d");
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            context.drawImage(video, 0, 0, canvas.width, canvas.height);
-            capturedImage = canvas.toDataURL("image/png");
-            capturedImageElement.src = capturedImage;
-            capturedImageElement.style.display = "block";
-            
-            stopCamera(); // Stop the camera when capturing the image
-            
-            video.style.display = "none";
-            flipBtn.style.display = "none";
-            captureBtn.style.display = "none";
-            
-            imageTitle.innerText = imageData.title;
-            imageDescription.innerText = imageData.description;
-            imageDetails.style.display = "block";
+        captureBtn.addEventListener("click", async () => {
+            // Show loading screen
+            loadingScreen.style.display = "block";
+
+            try {
+                // Capture Image from Camera
+                const context = canvas.getContext("2d");
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                capturedImage = canvas.toDataURL("image/png");
+                // console.log(canvas);
+
+                // Convert canvas image to Blob
+                canvas.toBlob(async (blob) => {
+
+                    // Stop the Camera
+                    if (stream) {
+                        stream.getTracks().forEach(track => track.stop());
+                    }
+
+                    // Hide Camera & Buttons
+                    video.style.display = "none";
+                    flipBtn.style.display = "none";
+                    captureBtn.style.display = "none";
+
+                    //Captured Image Display
+                    capturedImageElement.src = URL.createObjectURL(blob);
+                    capturedImageElement.style.display = "block";
+
+                    //Convert Into Form Data
+                    const formData = new FormData();
+                    formData.append("image", blob, "captured-image.png");
+
+                    // Send FormData to API via POST request
+                    const response = await fetch("http://localhost:5000/analyze", {
+                        method: "POST",
+                        body: formData,
+                    });
+
+                    if (!response.ok) {
+                        throw new Error("Failed to upload image");
+                    }
+
+                    const data = await response.json();
+                    console.log(typeof data);
+                
+
+                    imageData = data;
+                    console.log("API Response:", data); // Debugging: Check if data is received
+
+                    console.log(imageData["Plant Identification"]["Common Name"]); // Output: Rose
+
+                    
+                    // Assign API response to image details
+                    // imageData.title = sample["title"]; //|| "Captured Image";
+                    // imageData.description = sample["Description"]; //|| "This is the captured image.";
+
+                    // Hide loading screen
+                    document.getElementById("loadingScreen").style.display = "none";
+
+                    // Show Captured Image & Details
+                    imageTitle.innerText = imageData["Plant Identification"]["Common Name"];
+                    imageDescription.innerText = imageData["Description"];
+                    imageDetails.style.display = "block";
+                    
+                }, "image/png");
+
+            } catch (error) {
+                console.error("Error uploading image:", error);
+                alert("Failed to process the image.");
+                loadingScreen.style.display = "none";
+            }
         });
 
-        startBtn.addEventListener("click", () => {
+        
+
+        flipBtn.addEventListener("click", () => {
+            currentFacingMode = currentFacingMode === "user" ? "environment" : "user";
             startCamera(currentFacingMode);
         });
 
@@ -161,7 +236,7 @@
             doc.setFont("helvetica", "bold");
             doc.setFontSize(22);
             doc.setTextColor(0, 51, 102); // Dark Blue
-            doc.text(imageData.title, 20, 40);
+            doc.text(imageData["Plant Identification"]["Common Name"], 20, 40);
 
             // Image Placement
             const imgWidth = 140;
@@ -178,7 +253,7 @@
 
             doc.setFont("courier", "italic");
             doc.setFontSize(14);
-            doc.text(imageData.description, 20, imgY + imgHeight + 25, { maxWidth: 170 });
+            doc.text(imageData["Description"], 20, imgY + imgHeight + 25, { maxWidth: 170 });
 
             // Footer
             doc.setFont("helvetica", "bold");
@@ -188,7 +263,7 @@
 
             if (isDownload) {
                 // Save PDF locally
-                doc.save("Captured_Image.pdf");
+                doc.save(`${imageData["Plant Identification"]["Common Name"]}_report.pdf`);
             } else {
                 // Convert to Blob for sharing
                 const pdfBlob = doc.output("blob");
@@ -198,8 +273,8 @@
 
                 if (navigator.share) {
                     navigator.share({
-                        title: imageData.title,
-                        text: imageData.description,
+                        title: imageData["Plant Identification"]["Common Name"],
+                        text: imageData["Description"],
                         files: [file]
                     }).then(() => {
                         console.log("PDF shared successfully!");
